@@ -124,6 +124,20 @@ func UploadS3File(objectKey string, bucket string, s3Client *s3.Client, fileByte
 	return nil
 }
 
+func DeleteS3File(objectKey string, bucket string, s3Client *s3.Client) error {
+
+	_, err := s3Client.DeleteObject(context.TODO(), &s3.DeleteObjectInput{
+		Bucket: aws.String(bucket),
+		Key:    aws.String(objectKey),
+	})
+
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func main() {
 
 	port := ":" + os.Getenv("PORT")
@@ -245,8 +259,18 @@ func OptimizeImages(c *gin.Context) {
 
 	name := s3map["key"][0 : len(s3map["key"])-len(extension)]
 
+	//Delete the original file
+	err = DeleteS3File(s3map["key"], s3map["bucket"], awsS3Client)
+
+	if err != nil {
+		respondWithError(c, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	// Upload the optimized file
 	optimizedBucket := handleEnvVariables("AWS_BUCKET_NAME")
-	err = UploadS3File(name+"-optimized.webp", optimizedBucket, awsS3Client, mw.GetImageBlob())
+
+	err = UploadS3File(name, optimizedBucket, awsS3Client, mw.GetImageBlob())
 	if err != nil {
 		respondWithError(c, http.StatusBadRequest, err.Error())
 		return
@@ -254,7 +278,7 @@ func OptimizeImages(c *gin.Context) {
 	// Destroy the MagickWand
 	mw.Destroy()
 
-	finalUrl := "https://s3.ap-south-1.amazonaws.com/" + optimizedBucket + "/" + name + "-optimized.webp"
+	finalUrl := "https://s3.ap-south-1.amazonaws.com/" + optimizedBucket + "/" + name
 
 	c.JSON(http.StatusOK, gin.H{"message": "Image optimized successfully", "url": finalUrl})
 }
